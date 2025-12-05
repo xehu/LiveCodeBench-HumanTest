@@ -6,18 +6,19 @@ import json
 import tqdm
 import time
 import logging
+import random
 from judge import LightCPVerifierJudge, SupportedLanguage, ProblemNotFoundError
 from util import extract_longest_cpp_code
 
 # *************************** Change this before use ****************************
 
-llm_instance = (
-    api_interface.ExampleLLM()
-)  # change this to the LLM class you want to benchmark on
+# llm_instance = (
+#     api_interface.ExampleLLM()
+# )  # change this to the LLM class you want to benchmark on
 
-# change this to the number of workers you want to use in LightCPVerifier
-# recommended to be <= number of CPU physical cores
-worker = 8
+# # change this to the number of workers you want to use in LightCPVerifier
+# # recommended to be <= number of CPU physical cores
+# worker = 8
 
 # *******************************************************************************
 
@@ -120,33 +121,70 @@ def print_stats(dataset: DatasetDict, problem_set: dict[str, ProblemTestState]):
 if __name__ == "__main__":
     dataset = load_dataset("QAQAQAQAQ/LiveCodeBench-Pro")
     problem_set = get_problem_set(dataset)
-    with LightCPVerifierJudge(worker=worker) as judge:
-        for problem in tqdm.tqdm(problem_set.values(), desc="Generating solutions"):
-            response, meta = llm_instance.generate_solution(problem.problem_statement)
-            problem.text_response = response
-            problem.code = extract_longest_cpp_code(response)
-            problem.response_meta = meta
-            if problem.code:
-                try:
-                    problem.submission_id = judge.submit(problem.problem_id, SupportedLanguage.CPP, problem.code)
-                except ProblemNotFoundError:
-                    logger.warning(f"Problem {problem.problem_id} not found in judge dataset.")
-                except Exception as e:
-                    logger.error(f"Error submitting problem {problem.problem_id}: {e}")
-        for problem in tqdm.tqdm(problem_set.values(), desc="Fetching results"):
-            if not problem.submission_id:
-                problem.judge_result = "Judge Failed"
-                continue
-            while True:
-                problem.judge_result = judge.get_result(problem.submission_id)
-                if problem.judge_result != "Judging":
-                    break
-                time.sleep(1)
-    
-    results = []
-    for problem in problem_set.values():
-        results.append(BenchmarkResult(**problem.model_dump()).model_dump())
-    with open("benchmark_result.json", "w") as f:
-        json.dump(results, f, indent=4)
 
-    print_stats(dataset, problem_set)
+    easy_problems = {
+        pid: info
+        for pid, info in problem_set.items()
+        if dict(info).get("difficulty") == "easy"
+    }
+    medium_problems = {
+        pid: info
+        for pid, info in problem_set.items()
+        if dict(info).get("difficulty") == "medium"
+    }
+    hard_problems = {
+        pid: info
+        for pid, info in problem_set.items()
+        if dict(info).get("difficulty") == "hard"
+    }
+
+    random.seed(2139)
+
+    chosen_easy = random.sample(list(easy_problems.keys()), k=2)
+    chosen_medium = random.sample(list(medium_problems.keys()), k=2)
+    chosen_hard = random.sample(list(hard_problems.keys()), k=2)
+
+    selected_ids = chosen_easy + chosen_medium + chosen_hard
+    selected_problems = [problem_set[pid] for pid in selected_ids]
+
+    # -------------------------------------------------------
+    # Display the selected problems to the human
+    # todo: figure out how to display this
+    # -------------------------------------------------------
+    print("\n=== SELECTED PROBLEMS ===")
+    for p in selected_problems:
+        print("\n----------------------------------------------")
+        print(f"ID: {p.problem_id}")
+        print(f"Title: {p.problem_title}")
+        print(f"Difficulty: {p.difficulty}")
+        print(f"Statement:\n{p.problem_statement}")
+
+    # -------------------------------------------------------
+    # Collect a human response (placeholder for now)
+    # todo: collect a human answer
+    # -------------------------------------------------------
+    # Example smoke test: known-wrong solution
+    human_code = """#include <iostream>
+
+        int main() {
+            std::cout << "Hello World!" << std::endl;
+            return 0;
+        }"""
+
+    # -------------------------------------------------------
+    # Judging
+    # todo: pass in a human answer
+    # -------------------------------------------------------
+    with LightCPVerifierJudge(worker=2) as judge:
+        problem_id = selected_problems[0].problem_id
+        sid = judge.submit(problem_id, SupportedLanguage.CPP, human_code)
+
+        # poll until result is ready
+        while True:
+            result = judge.get_result(sid)
+            print(f"Current result: {result}")
+            if result != "Judging":
+                break
+            time.sleep(1)
+        
+        print(f"Final result: {result}")
