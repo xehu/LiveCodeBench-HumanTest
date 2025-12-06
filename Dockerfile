@@ -4,7 +4,7 @@ FROM python:3.13-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     FLASK_RUN_HOST=0.0.0.0 \
-    FLASK_RUN_PORT=8000
+    FLASK_RUN_PORT=80
 
 WORKDIR /app
 
@@ -16,6 +16,6 @@ COPY . .
 # Default password can be overridden via environment variable
 ENV APP_PASSWORD=MITcoding
 
-EXPOSE 8000
+EXPOSE 80
 
-CMD ["flask", "--app", "app", "run", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["flask", "--app", "app", "run", "--host", "0.0.0.0", "--port", "80"]
