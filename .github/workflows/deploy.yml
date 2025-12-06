@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
-      EB_APPLICATION_NAME: CPP-Activity-Portal
+      EB_APPLICATION_NAME: '"CPP-Activity-Portal"'
       EB_ENVIRONMENT_NAME: cpp-activity-portal
       HUGGINGFACEHUB_API_TOKEN: ${{ secrets.HUGGINGFACEHUB_API_TOKEN }}
     steps:
@@ -47,7 +47,7 @@ jobs:
           aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           region: ${{ secrets.AWS_REGION || 'us-east-2' }}
-          application_name: CPP-Activity-Portal
+          application_name: '"CPP-Activity-Portal"'
           environment_name: cpp-activity-portal
           version_label: v-${{ github.run_number }}-${{ github.run_attempt }}-${{ github.sha }}
           deployment_package: deploy.zip
