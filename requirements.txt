@@ -31,6 +31,8 @@ dill==0.3.8
     #   multiprocess
 distro==1.9.0
     # via openai
+flask==3.0.3
+    # via livecodebench-web
 docker==7.1.0
     # via livecodebench-pro
 filelock==3.19.1

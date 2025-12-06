@@ -1,0 +1,32 @@
+name: Deploy to Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: eb-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create deployment bundle
+        run: |
+          zip -r deploy.zip . -x ".git/*"
+
+      - name: Deploy to Elastic Beanstalk
+        uses: aws-actions/elastic-beanstalk-deploy@v1
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          region: ${{ secrets.AWS_REGION }}
+          application_name: ${{ secrets.EB_APPLICATION_NAME }}
+          environment_name: ${{ secrets.EB_ENVIRONMENT_NAME }}
+          version_label: v-${{ github.run_number }}-${{ github.sha }}
+          deployment_package: deploy.zip

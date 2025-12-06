@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}C++ Programming Activity Portal{% endblock %}</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&display=swap');
+
+        :root {
+            --accent: #0f8b8d;
+            --accent-dark: #0b5f60;
+            --bg: #f5f7fa;
+            --card: #ffffff;
+            --text: #1b1b1e;
+            --muted: #7a7d85;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+            background: linear-gradient(165deg, #ebf4f4, #fdfdfd 55%, #eef2f5);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .page {
+            width: min(960px, 100%);
+            background: var(--card);
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 20px 60px rgba(15, 139, 141, 0.12);
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 32px;
+            border-bottom: 1px solid #e6ebf1;
+            padding-bottom: 16px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: clamp(1.4rem, 2vw, 1.9rem);
+            letter-spacing: -0.5px;
+        }
+
+        header span {
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .card {
+            background: #f9fbfc;
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid #e1e7ef;
+        }
+
+        .actions {
+            display: flex;
+            gap: 16px;
+            justify-content: flex-end;
+            margin-top: 24px;
+        }
+
+        button, .button-link {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 999px;
+            padding: 12px 28px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        button:hover, .button-link:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(15, 139, 141, 0.2);
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid rgba(15, 139, 141, 0.2);
+            box-shadow: none;
+        }
+
+        form label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        form input, form textarea {
+            width: 100%;
+            border: 1px solid #dbe2ea;
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-family: inherit;
+            font-size: 1rem;
+            resize: vertical;
+        }
+
+        form textarea {
+            min-height: 280px;
+            line-height: 1.4;
+        }
+
+        .flash {
+            background: #ffe9d5;
+            border: 1px solid #ffc99f;
+            color: #7a3b00;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            background: #0f1c2e;
+            color: #e9f1ff;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+
+        @media (max-width: 640px) {
+            .page {
+                padding: 20px;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header>
+            <div>
+                <h1>C++ Programming Activity Portal</h1>
+                <span>Coding challenges designed for human intelligence</span>
+            </div>
+        </header>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="flash">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

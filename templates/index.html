@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Start Session · C++ Programming Activity Portal{% endblock %}
+{% block content %}
+<section class="card">
+    <h2>Please create a unique User ID to get started.</h2>
+    <p><em>Remember your User ID for when you submit your work for payment.</em></p>
+    <form method="post" autocomplete="off">
+        <label for="user_id">User ID (a nickname for you!)</label>
+        <input id="user_id" name="user_id" placeholder="coder-123" required />
+
+        <div class="actions">
+            <button type="submit">Generate Problem Set</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

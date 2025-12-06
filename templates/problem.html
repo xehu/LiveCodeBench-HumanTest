@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Problem {{ index + 1 }} · C++ Programming Activity Portal{% endblock %}
+{% block content %}
+<section class="card">
+    <p><strong>Problem {{ index + 1 }} of {{ total }}</strong></p>
+    <h2>{{ problem["title"] }}</h2>
+    <p><em>Difficulty: {{ problem["difficulty"]|capitalize }}</em></p>
+
+    <h3>Statement</h3>
+    <pre>{{ problem["statement"] }}</pre>
+
+    <h3>Your Solution</h3>
+    <form method="post">
+        <textarea name="solution" placeholder="Paste your solution here (C++)" required>{{ saved_solution }}</textarea>
+        <div class="actions">
+            {% set is_last = (index + 1 == total) %}
+            {% if not is_last %}
+                <button type="submit">Next Page</button>
+            {% else %}
+                <button type="submit">Finish &amp; Grade</button>
+            {% endif %}
+        </div>
+    </form>
+</section>
+{% endblock %}

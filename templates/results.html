@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Results · C++ Programming Activity Portal{% endblock %}
+{% block content %}
+<section class="card">
+    <h2>Results for {{ user_identifier }}</h2>
+    <p>We have automatically graded your answers. The table below tracks the saved results.</p>
+
+    <table style="width:100%; border-collapse:collapse; margin-top:16px; font-size:0.95rem;">
+        <thead>
+            <tr style="text-align:left; border-bottom:1px solid #e1e7ef;">
+                <th style="padding:8px 4px;">#</th>
+                <th style="padding:8px 4px;">Problem</th>
+                <th style="padding:8px 4px;">Difficulty</th>
+                <th style="padding:8px 4px;">Judge Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in submissions %}
+            <tr style="border-bottom:1px solid #f1f3f7;">
+                <td style="padding:8px 4px;">{{ loop.index }}</td>
+                <td style="padding:8px 4px;">{{ item["title"] }}</td>
+                <td style="padding:8px 4px; text-transform:capitalize;">{{ item["difficulty"] }}</td>
+                <td style="padding:8px 4px;">{{ item["judge_result"] or "Pending" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="actions">
+        <a class="button-link secondary" href="{{ url_for('index') }}">Start New Session</a>
+    </div>
+</section>
+{% endblock %}

@@ -108,6 +108,33 @@ Please include the following information in your submission:
 - Any specific details
 - Contact information
 
+## Human Workflow Web App
+
+The repository now ships with a lightweight Flask app (`app.py`) that guides a human through the same sampling logic implemented in `benchmark.py`.
+
+### Features
+
+- Deterministic sampling of 2 easy, 2 medium, and 2 hard problems based on a numeric seed.
+- Storage of `(user_id, run_id, seed, problem_ids)` plus per-problem solutions and judge verdicts inside `app.db` (SQLite).
+- Step-by-step UI that shows each problem statement with a solution text box and an explicit "Next Page" button.
+- Automatic grading via `LightCPVerifierJudge` once all solutions are submitted, with verdicts persisted alongside the solutions.
+
+### Deploy and Run Locally
+
+1. Ensure Docker is running because the judge container is required for final grading.
+2. Install dependencies (`pip install -r requirements.txt`) if you have not already.
+3. Export any optional settings:
+    ```bash
+    export FLASK_SECRET_KEY="change-this"
+    export APP_DATABASE_PATH="/absolute/path/to/app.db"  # defaults to repo/app.db
+    export JUDGE_WORKERS=2
+    ```
+4. Launch the web server:
+    ```bash
+    flask --app app run --host 0.0.0.0 --port 8000
+    ```
+5. Visit `http://localhost:8000`, enter your user ID and numeric seed, then follow the guided pages to submit solutions. Results can be revisited at any time on the final screen and are also stored in `app.db` for further analysis.
+
 ## Understanding the Codebase
 
 ### api_interface.py
