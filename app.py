@@ -28,6 +28,7 @@ app.config["DATABASE_PATH"] = os.environ.get(
 app.config["JUDGE_WORKERS"] = int(os.environ.get("JUDGE_WORKERS", "2"))
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "MITcoding")
 PASSWORD_SESSION_KEY = "is_authenticated"
+SQLITE_INT_MAX = 2**63 - 1
 
 HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
 if not HF_TOKEN:
@@ -150,7 +151,8 @@ def user_exists(user_identifier: str) -> bool:
 
 def derive_seed_from_user(user_identifier: str) -> int:
     digest = hashlib.sha256(user_identifier.encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big")
+    seed_value = int.from_bytes(digest[:8], "big", signed=False)
+    return seed_value % SQLITE_INT_MAX  # keep value within SQLite INTEGER bounds
 
 
 def select_problems(seed_value: int) -> list[ProblemTestState]:
