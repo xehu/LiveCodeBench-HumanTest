@@ -29,8 +29,14 @@ app.config["JUDGE_WORKERS"] = int(os.environ.get("JUDGE_WORKERS", "2"))
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "MITcoding")
 PASSWORD_SESSION_KEY = "is_authenticated"
 
+HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACEHUB_API_TOKEN")
+if not HF_TOKEN:
+    raise RuntimeError(
+        "HUGGINGFACEHUB_API_TOKEN (or HF_TOKEN) must be set to access the gated dataset"
+    )
+
 logger.info("Loading dataset '%s' ...", DATASET_NAME)
-DATASET = load_dataset(DATASET_NAME)
+DATASET = load_dataset(DATASET_NAME, use_auth_token=HF_TOKEN)
 PROBLEM_SET = get_problem_set(DATASET)
 
 PROBLEMS_BY_DIFFICULTY: dict[str, List[str]] = {"easy": [], "medium": [], "hard": []}

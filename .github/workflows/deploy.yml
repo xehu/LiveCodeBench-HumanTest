@@ -12,9 +12,30 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      EB_APPLICATION_NAME: ${{ secrets.EB_APPLICATION_NAME }}
+      EB_ENVIRONMENT_NAME: ${{ secrets.EB_ENVIRONMENT_NAME }}
+      HUGGINGFACEHUB_API_TOKEN: ${{ secrets.HUGGINGFACEHUB_API_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync EB environment variables
+        if: env.HUGGINGFACEHUB_API_TOKEN != ''
+        run: |
+          aws elasticbeanstalk update-environment \
+            --application-name "$EB_APPLICATION_NAME" \
+            --environment-name "$EB_ENVIRONMENT_NAME" \
+            --option-settings Namespace=aws:elasticbeanstalk:application:environment,OptionName=HUGGINGFACEHUB_API_TOKEN,Value="$HUGGINGFACEHUB_API_TOKEN" \
+                              Namespace=aws:elasticbeanstalk:application:environment,OptionName=HF_TOKEN,Value="$HUGGINGFACEHUB_API_TOKEN"
 
       - name: Create deployment bundle
         run: |
