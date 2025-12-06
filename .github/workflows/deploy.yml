@@ -41,6 +41,22 @@ jobs:
         run: |
           zip -r deploy.zip . -x ".git/*"
 
+      - name: Wait for environment to be Ready
+        run: |
+          for attempt in {1..30}; do
+            STATUS=$(aws elasticbeanstalk describe-environments \
+              --environment-names "$EB_ENVIRONMENT_NAME" \
+              --query 'Environments[0].Status' \
+              --output text)
+            echo "Current status: $STATUS"
+            if [ "$STATUS" = "Ready" ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Environment never reached Ready state" >&2
+          exit 1
+
       - name: Deploy to Elastic Beanstalk
         uses: einaregilsson/beanstalk-deploy@v21
         with:
