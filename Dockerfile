@@ -16,4 +16,6 @@ COPY . .
 # Default password can be overridden via environment variable
 ENV APP_PASSWORD=MITcoding
 
+EXPOSE 8000
+
 CMD ["flask", "--app", "app", "run", "--host", "0.0.0.0", "--port", "8000"]
