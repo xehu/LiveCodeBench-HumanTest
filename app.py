@@ -36,7 +36,12 @@ if not HF_TOKEN:
     )
 
 logger.info("Loading dataset '%s' ...", DATASET_NAME)
-DATASET = load_dataset(DATASET_NAME, use_auth_token=HF_TOKEN)
+_dataset_kwargs = {"token": HF_TOKEN}
+try:
+    DATASET = load_dataset(DATASET_NAME, **_dataset_kwargs)
+except TypeError:
+    # Older versions of datasets expect use_auth_token instead of token.
+    DATASET = load_dataset(DATASET_NAME, use_auth_token=HF_TOKEN)
 PROBLEM_SET = get_problem_set(DATASET)
 
 PROBLEMS_BY_DIFFICULTY: dict[str, List[str]] = {"easy": [], "medium": [], "hard": []}
