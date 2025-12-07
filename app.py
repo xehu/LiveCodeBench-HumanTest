@@ -523,7 +523,7 @@ def results():
     has_saved_code = any((row["solution"] or "").strip() for row in submissions)
 
     requested_grade = request.args.get("grade") == "1"
-    should_trigger = requested_grade or (pending_count and has_saved_code)
+    should_trigger = requested_grade or pending_count > 0
     if should_trigger:
         started = start_grading_async(run_id, user_identifier)
         if requested_grade:
@@ -533,7 +533,7 @@ def results():
                 flash("Grading is already running. This page will refresh automatically.")
 
     grading_active = is_grading(run_id)
-    auto_refresh = grading_active or (pending_count > 0 and has_saved_code)
+    auto_refresh = grading_active or pending_count > 0
 
     return render_template(
         "results.html",
