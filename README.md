@@ -128,6 +128,7 @@ The repository now ships with a lightweight Flask app (`app.py`) that guides a h
     export FLASK_SECRET_KEY="change-this"
     export APP_DATABASE_PATH="/absolute/path/to/app.db"  # defaults to repo/app.db
     export JUDGE_WORKERS=2
+    export JUDGE_BASE_URL="https://livecodebench-judge.us-east-2.elasticbeanstalk.com"  # optional: use managed judge service instead of local Docker
     ```
 4. Launch the web server:
     ```bash

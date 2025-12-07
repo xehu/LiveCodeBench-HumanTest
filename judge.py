@@ -44,8 +44,16 @@ class LightCPVerifierJudge(Judge):
 
     def __init__(self, worker: int = 4):
         self.worker = worker
+        self.remote_base_url = os.environ.get("JUDGE_BASE_URL")
+        self.container = None
 
     def __enter__(self):
+        if self.remote_base_url:
+            self.base_url = self.remote_base_url.rstrip("/")
+            logger.info("Using remote judge at %s", self.base_url)
+            self._ensure_connection()
+            return self
+
         self.docker_client = docker.from_env()
         self._build_image()
         self._start_container()
@@ -118,6 +126,8 @@ class LightCPVerifierJudge(Judge):
         raise RuntimeError("Failed to connect to judge service after multiple attempts.")
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if not self.container:
+            return
         try:
             logger.info(f"Stopping and removing container '{self.CONTAINER_NAME}'...")
             self.container.stop()
