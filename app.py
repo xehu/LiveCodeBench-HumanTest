@@ -5,6 +5,7 @@ import os
 import random
 import secrets
 import sqlite3
+import threading
 import time
 from typing import List
 
@@ -460,7 +461,12 @@ def problem_page(index: int):
         save_solution(run_id, user_identifier, problem_id, solution)
         next_index = index + 1
         if next_index >= len(problem_ids):
-            grade_user_submissions(run_id, user_identifier)
+            threading.Thread(
+                target=grade_user_submissions,
+                args=(run_id, user_identifier),
+                daemon=True,
+            ).start()
+            flash("Grading in progress. Refresh the results page to see updates.")
             return redirect(url_for("results"))
         return redirect(url_for("problem_page", index=next_index))
 
