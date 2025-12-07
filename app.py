@@ -304,25 +304,78 @@ def grade_user_submissions(run_id: str, user_identifier: str):
     if not rows:
         return
 
-    with LightCPVerifierJudge(worker=app.config["JUDGE_WORKERS"]) as judge:
+    logger.info(
+        "Starting grading for run_id=%s user=%s (%d problems)", run_id, user_identifier, len(rows)
+    )
+
+    def mark_no_submission(problem_id: str):
+        update_judge_result(run_id, problem_id, "No Submission", None, None)
+        logger.info("Run %s problem %s had no submission; skipping judge", run_id, problem_id)
+
+    try:
+        with LightCPVerifierJudge(worker=app.config["JUDGE_WORKERS"]) as judge:
+            for row in rows:
+                problem_id = row["problem_id"]
+                solution = row["solution"] or ""
+                if not solution.strip():
+                    mark_no_submission(problem_id)
+                    continue
+
+                try:
+                    submission_sid = judge.submit(problem_id, SupportedLanguage.CPP, solution)
+                    result = wait_for_result(judge, submission_sid)
+                    metadata = {"graded_at": time.time()}
+                    update_judge_result(run_id, problem_id, result, submission_sid, metadata)
+                    logger.info(
+                        "Judge result for run %s problem %s (sid=%s): %s",
+                        run_id,
+                        problem_id,
+                        submission_sid,
+                        result,
+                    )
+                except ProblemNotFoundError:
+                    update_judge_result(run_id, problem_id, "Problem Not Found", None, None)
+                    logger.warning("Problem %s not found for run %s", problem_id, run_id)
+                except TimeoutError as exc:
+                    update_judge_result(
+                        run_id,
+                        problem_id,
+                        "Judge Timeout",
+                        None,
+                        {"error": str(exc)},
+                    )
+                    logger.error("Judge timeout for run %s problem %s: %s", run_id, problem_id, exc)
+                except Exception as exc:  # noqa: BLE001
+                    update_judge_result(
+                        run_id,
+                        problem_id,
+                        "Judge Failed",
+                        None,
+                        {"error": str(exc)},
+                    )
+                    logger.exception(
+                        "Judge failed for run %s problem %s", run_id, problem_id
+                    )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Judge service unavailable for run %s: %s", run_id, exc)
         for row in rows:
             problem_id = row["problem_id"]
             solution = row["solution"] or ""
             if not solution.strip():
-                update_judge_result(run_id, problem_id, "No Submission", None, None)
+                mark_no_submission(problem_id)
                 continue
-
-            try:
-                submission_sid = judge.submit(problem_id, SupportedLanguage.CPP, solution)
-                result = wait_for_result(judge, submission_sid)
-                metadata = {"graded_at": time.time()}
-                update_judge_result(run_id, problem_id, result, submission_sid, metadata)
-            except ProblemNotFoundError:
-                update_judge_result(run_id, problem_id, "Problem Not Found", None, None)
-            except TimeoutError as exc:
-                update_judge_result(run_id, problem_id, "Judge Timeout", None, {"error": str(exc)})
-            except Exception as exc:  # noqa: BLE001
-                update_judge_result(run_id, problem_id, "Judge Failed", None, {"error": str(exc)})
+            update_judge_result(
+                run_id,
+                problem_id,
+                "Judge Unavailable",
+                None,
+                {"error": str(exc)},
+            )
+            logger.error(
+                "Marked run %s problem %s as Judge Unavailable due to startup failure",
+                run_id,
+                problem_id,
+            )
 
 
 @app.before_request
