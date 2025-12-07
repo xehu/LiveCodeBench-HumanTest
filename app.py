@@ -59,6 +59,9 @@ logger.info(
     len(PROBLEMS_BY_DIFFICULTY["hard"]),
 )
 
+grading_lock = threading.Lock()
+active_grading_runs: set[str] = set()
+
 
 def get_db_connection():
     conn = sqlite3.connect(app.config["DATABASE_PATH"])
@@ -379,6 +382,34 @@ def grade_user_submissions(run_id: str, user_identifier: str):
             )
 
 
+def start_grading_async(run_id: str, user_identifier: str) -> bool:
+    """Kick off grading in a background thread once per run."""
+    with grading_lock:
+        if run_id in active_grading_runs:
+            return False
+        active_grading_runs.add(run_id)
+
+    def _worker():
+        try:
+            grade_user_submissions(run_id, user_identifier)
+        finally:
+            with grading_lock:
+                active_grading_runs.discard(run_id)
+
+    thread = threading.Thread(
+        target=_worker,
+        name=f"grading-{run_id}",
+        daemon=True,
+    )
+    thread.start()
+    return True
+
+
+def is_grading(run_id: str) -> bool:
+    with grading_lock:
+        return run_id in active_grading_runs
+
+
 @app.before_request
 def enforce_password_gate():
     exempt_endpoints = {"login", "static"}
@@ -461,12 +492,11 @@ def problem_page(index: int):
         save_solution(run_id, user_identifier, problem_id, solution)
         next_index = index + 1
         if next_index >= len(problem_ids):
-            threading.Thread(
-                target=grade_user_submissions,
-                args=(run_id, user_identifier),
-                daemon=True,
-            ).start()
-            flash("Grading in progress. Refresh the results page to see updates.")
+            started = start_grading_async(run_id, user_identifier)
+            if started:
+                flash("Grading in progress. The results page will update shortly.")
+            else:
+                flash("Grading already running. Check the results page for updates.")
             return redirect(url_for("results"))
         return redirect(url_for("problem_page", index=next_index))
 
@@ -489,7 +519,31 @@ def results():
 
     run_id, user_identifier, _ = context
     submissions = fetch_submissions_for_run(run_id)
-    return render_template("results.html", submissions=submissions, user_identifier=user_identifier)
+    pending_count = sum(1 for row in submissions if not row["judge_result"])
+    has_saved_code = any((row["solution"] or "").strip() for row in submissions)
+
+    requested_grade = request.args.get("grade") == "1"
+    should_trigger = requested_grade or (pending_count and has_saved_code)
+    if should_trigger:
+        started = start_grading_async(run_id, user_identifier)
+        if requested_grade:
+            if started:
+                flash("Grading started. This page will refresh automatically while judging finishes.")
+            else:
+                flash("Grading is already running. This page will refresh automatically.")
+
+    grading_active = is_grading(run_id)
+    auto_refresh = grading_active or (pending_count > 0 and has_saved_code)
+
+    return render_template(
+        "results.html",
+        submissions=submissions,
+        user_identifier=user_identifier,
+        pending_count=pending_count,
+        grading_active=grading_active,
+        has_saved_code=has_saved_code,
+        auto_refresh=auto_refresh,
+    )
 
 
 if __name__ == "__main__":

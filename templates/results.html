@@ -5,6 +5,18 @@
     <h2>Results for {{ user_identifier }}</h2>
     <p>We have automatically graded your answers. The table below tracks the saved results.</p>
 
+    {% if pending_count > 0 %}
+    <div class="info-banner" style="margin:12px 0; padding:12px; border:1px solid #d4def5; border-radius:8px; background:#f6f9ff;">
+        {% if grading_active %}
+            <strong>Grading in progress.</strong> This page refreshes every few seconds until all verdicts arrive.
+        {% elif has_saved_code %}
+            <strong>Results pending.</strong> Click “Start grading” to send your solutions to the judge.
+        {% else %}
+            <strong>No code submitted yet.</strong> Add solutions on the problem pages before grading.
+        {% endif %}
+    </div>
+    {% endif %}
+
     <table style="width:100%; border-collapse:collapse; margin-top:16px; font-size:0.95rem;">
         <thead>
             <tr style="text-align:left; border-bottom:1px solid #e1e7ef;">
@@ -27,7 +39,23 @@
     </table>
 
     <div class="actions">
+        {% if grading_active %}
+            <span class="button-link" style="pointer-events:none; background:#dfe7fb; color:#3a4c92;">Grading...</span>
+        {% else %}
+            <a class="button-link" href="{{ url_for('results', grade=1) }}">Start / Restart Grading</a>
+        {% endif %}
+        <a class="button-link secondary" href="{{ url_for('results') }}">Refresh Status</a>
         <a class="button-link secondary" href="{{ url_for('index') }}">Start New Session</a>
     </div>
 </section>
+
+{% if auto_refresh %}
+<script>
+setTimeout(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('grade');
+    window.location.href = url.toString();
+}, 5000);
+</script>
+{% endif %}
 {% endblock %}
