@@ -21,11 +21,18 @@ def run_command(cmd: list[str], *, env: dict[str, str] | None = None):
 
 def sync_database(env_name: str, remote_path: str, local_path: Path, instance_number: int | None):
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    remote_spec = f"{env_name}:{remote_path}"
-    cmd = ["eb", "scp", remote_spec, str(local_path)]
+    ssh_cmd = [
+        "eb",
+        "ssh",
+        env_name,
+        "--command",
+        f"sudo cat {remote_path}",
+    ]
     if instance_number is not None:
-        cmd.extend(["-n", str(instance_number)])
-    run_command(cmd)
+        ssh_cmd.extend(["-n", str(instance_number)])
+    print("+", " ".join(ssh_cmd))
+    result = subprocess.run(ssh_cmd, check=True, capture_output=True)
+    local_path.write_bytes(result.stdout)
 
 
 def grade_all(local_db: Path, only_missing: bool):
