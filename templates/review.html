@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Review & Update · C++ Programming Activity Portal{% endblock %}
+{% block content %}
+<section class="card">
+    <h2>Thank you for participating!</h2>
+    <p>Your answers have been recorded, but you may revisit any problem to edit or resubmit before final handoff.</p>
+    <p><strong>{{ completed }} / {{ total }}</strong> problems currently have saved solutions.</p>
+
+    <div style="margin-top:24px;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.95rem;">
+            <thead>
+                <tr style="text-align:left; border-bottom:1px solid #e1e7ef;">
+                    <th style="padding:8px 4px;">#</th>
+                    <th style="padding:8px 4px;">Problem</th>
+                    <th style="padding:8px 4px;">Difficulty</th>
+                    <th style="padding:8px 4px;">Status</th>
+                    <th style="padding:8px 4px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for problem in problems %}
+                <tr style="border-bottom:1px solid #f1f3f7;">
+                    <td style="padding:8px 4px;">{{ problem.index + 1 }}</td>
+                    <td style="padding:8px 4px;">{{ problem.title }}</td>
+                    <td style="padding:8px 4px; text-transform:capitalize;">{{ problem.difficulty }}</td>
+                    <td style="padding:8px 4px;">
+                        {% if problem.has_solution %}
+                            Saved
+                        {% else %}
+                            Needs answer
+                        {% endif %}
+                    </td>
+                    <td style="padding:8px 4px;">
+                        <a class="button-link secondary" href="{{ url_for('problem_page', index=problem.index) }}">Edit / Resubmit</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="actions" style="justify-content: space-between;">
+        <a class="button-link secondary" href="{{ url_for('index') }}">Start New Session</a>
+        <span style="align-self:center; color:#7a7d85; font-size:0.9rem;">Return to any problem, update your solution, and it will be saved automatically.</span>
+    </div>
+</section>
+{% endblock %}

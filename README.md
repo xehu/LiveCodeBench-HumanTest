@@ -127,14 +127,88 @@ The repository now ships with a lightweight Flask app (`app.py`) that guides a h
     ```bash
     export FLASK_SECRET_KEY="change-this"
     export APP_DATABASE_PATH="/absolute/path/to/app.db"  # defaults to repo/app.db
+    export APP_ENV=local  # set to "prod" to disable judging/results in production
     export JUDGE_WORKERS=2
-    export JUDGE_BASE_URL="https://livecodebench-judge.us-east-2.elasticbeanstalk.com"  # optional: use managed judge service instead of local Docker
     ```
+    Environment variables can also be stored in a file. By default the app will look for a path specified via `APP_ENV_FILE`, then fall back to `aws.env`, then `.env` in the repository root and automatically load any `KEY=VALUE` pairs (including `HUGGINGFACEHUB_API_TOKEN`, AWS keys, etc.). Values already present in the process environment always win. The previously hosted judge service has been decommissioned, so leave `JUDGE_BASE_URL` unset and rely on the local LightCPVerifier container when grading.
 4. Launch the web server:
     ```bash
     flask --app app run --host 0.0.0.0 --port 8000
     ```
 5. Visit `http://localhost:8000`, enter your user ID and numeric seed, then follow the guided pages to submit solutions. Results can be revisited at any time on the final screen and are also stored in `app.db` for further analysis.
+
+### Production Review-Only Mode
+
+Set `APP_ENV=prod` before launching Flask on the production environment. This disables the automated judging workflow and repurposes the `/results` page into a "Review & Update" hub:
+
+- Participants see a thank-you message confirming that every answer was recorded.
+- Each problem is listed with its completion status plus an "Edit / Resubmit" button that links back to the appropriate problem page.
+- Users can edit responses as many times as they want; each save immediately updates the SQLite database.
+
+Use this mode whenever the Docker-based judge is unavailable—you can still capture high-quality human answers without exposing a broken results screen.
+
+### How the Production Database Gets Updated
+
+- Every time a participant clicks **Next Page**, **Finish & Review**, or the **Edit / Resubmit** button on a problem, the latest C++ solution is written to the `submissions` table (columns: `run_id`, `problem_id`, `solution`).
+- The `users` table stores the original `run_id`, `user_identifier`, and deterministic seed. The `user_problems` table stores the sampled problems in order so the UI can rebuild each session.
+- Nothing special is required from the participant beyond using the UI—the database always reflects the latest edits.
+
+To inspect the live database over SSH, point `sqlite3` at the `APP_DATABASE_PATH` used in production (for example `/var/app/current/app.db`):
+
+```bash
+sqlite3 /var/app/current/app.db ".tables"
+sqlite3 /var/app/current/app.db "SELECT run_id, user_identifier, seed FROM users;"
+```
+
+### Copying the Database from Production
+
+1. Record the absolute path from `APP_DATABASE_PATH` on the production host.
+2. Use `scp` (or your preferred file-transfer tool) to download the database. Example:
+    ```bash
+    scp user@prod-host:/var/app/current/app.db ./prod-app.db
+    ```
+3. Keep the file alongside this repository or anywhere convenient on your workstation.
+
+### Running the Judge Locally on Pulled Data
+
+1. Ensure Docker Desktop (or your local Docker daemon) is running—the LightCPVerifier container still grades solutions locally.
+2. Export variables so Flask loads the copied database in local mode:
+    ```bash
+    export APP_DATABASE_PATH="$PWD/prod-app.db"
+    export APP_ENV=local
+    export HUGGINGFACEHUB_API_TOKEN="..."  # required for dataset access
+    ```
+3. For grading, you can either process a single run or everything at once:
+     - Single run:
+         ```bash
+         flask --app app grade-run <run_id>
+         ```
+     - All runs (optionally only those with pending submissions):
+         ```bash
+         flask --app app grade-all --only-missing
+         ```
+     List available runs via `sqlite3`:
+     ```bash
+     sqlite3 "$APP_DATABASE_PATH" "SELECT run_id, user_identifier FROM users;"
+     ```
+4. After grading, you can launch the Flask app locally (with `APP_ENV=local`) and navigate to `/results` while logged in as that user to see the verdicts, or inspect the `submissions` table directly.
+
+This workflow lets you keep production traffic judge-free while still gathering answers, then perform all heavy grading on a controlled local machine.
+
+### One-Command Sync + Grade Helper
+
+To make the entire workflow a single command, use the helper script:
+
+```bash
+python scripts/sync_and_grade.py --eb-env <ElasticBeanstalkEnvName> \
+        --remote-path /var/app/current/app.db \
+        --local-path ./prod-app.db \
+        --only-missing
+```
+
+- Requires the Elastic Beanstalk CLI (`eb`) to be configured locally.
+- The script runs `eb scp` to download the SQLite file, sets `APP_DATABASE_PATH`/`APP_ENV` for you, launches the local LightCPVerifier judge once via `flask --app app grade-all`, and writes verdicts back into the copied database.
+- Omit `--only-missing` to force regrading of every stored run. Use `--instance-number N` if your EB environment has multiple EC2 instances and you need a specific one.
 
 ## Understanding the Codebase
 

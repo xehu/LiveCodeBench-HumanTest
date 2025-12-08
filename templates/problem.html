@@ -16,6 +16,8 @@
             {% set is_last = (index + 1 == total) %}
             {% if not is_last %}
                 <button type="submit">Next Page</button>
+            {% elif results_disabled %}
+                <button type="submit">Finish &amp; Review</button>
             {% else %}
                 <button type="submit">Finish &amp; Grade</button>
             {% endif %}

@@ -9,6 +9,8 @@ import threading
 import time
 from typing import List
 
+import click
+
 from datasets import load_dataset
 from flask import Flask, flash, redirect, render_template, request, session, url_for
 
@@ -17,6 +19,41 @@ from judge import LightCPVerifierJudge, ProblemNotFoundError, SupportedLanguage
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _load_env_from_file(env_path: str | None) -> bool:
+    if not env_path:
+        return False
+    env_path = os.path.abspath(env_path)
+    if not os.path.exists(env_path):
+        return False
+    try:
+        with open(env_path, "r", encoding="utf-8") as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and key not in os.environ:
+                    os.environ[key] = value
+        logger.info("Loaded environment overrides from %s", env_path)
+        return True
+    except OSError as exc:
+        logger.warning("Failed to read env file %s: %s", env_path, exc)
+        return False
+
+
+_project_root = os.path.dirname(__file__)
+_env_candidates = [
+    os.environ.get("APP_ENV_FILE"),
+    os.path.join(_project_root, "aws.env"),
+    os.path.join(_project_root, ".env"),
+]
+for candidate in _env_candidates:
+    if _load_env_from_file(candidate):
+        break
 
 DATASET_NAME = "QAQAQAQAQ/LiveCodeBench-Pro"
 
@@ -27,6 +64,8 @@ app.config["DATABASE_PATH"] = os.environ.get(
     os.path.join(os.path.dirname(__file__), "app.db"),
 )
 app.config["JUDGE_WORKERS"] = int(os.environ.get("JUDGE_WORKERS", "2"))
+app.config["APP_ENV"] = os.environ.get("APP_ENV", "local").lower()
+app.config["RESULTS_DISABLED"] = app.config["APP_ENV"] == "prod"
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "MITcoding")
 PASSWORD_SESSION_KEY = "is_authenticated"
 SQLITE_INT_MAX = 2**63 - 1
@@ -133,6 +172,10 @@ def init_db():
 
 
 init_db()
+
+
+def results_disabled() -> bool:
+    return bool(app.config.get("RESULTS_DISABLED"))
 
 
 def is_authenticated() -> bool:
@@ -278,6 +321,75 @@ def fetch_submissions_for_run(run_id: str):
     return rows
 
 
+def list_all_runs():
+    conn = get_db_connection()
+    rows = conn.execute(
+        "SELECT run_id, user_identifier, created_at FROM users ORDER BY created_at"
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def pending_submission_count(run_id: str) -> int:
+    conn = get_db_connection()
+    row = conn.execute(
+        """
+        SELECT COUNT(*) as pending
+        FROM submissions
+        WHERE run_id = ? AND (judge_result IS NULL OR judge_result = '')
+        """,
+        (run_id,),
+    ).fetchone()
+    conn.close()
+    return int(row["pending"] if row is not None else 0)
+
+
+def _grade_rows_with_judge(judge: LightCPVerifierJudge, run_id: str, user_identifier: str, rows):
+    for row in rows:
+        problem_id = row["problem_id"]
+        solution = row["solution"] or ""
+        if not solution.strip():
+            update_judge_result(run_id, problem_id, "No Submission", None, None)
+            logger.info("Run %s problem %s had no submission; skipping judge", run_id, problem_id)
+            continue
+
+        try:
+            submission_sid = judge.submit(problem_id, SupportedLanguage.CPP, solution)
+            result = wait_for_result(judge, submission_sid)
+            metadata = {"graded_at": time.time()}
+            update_judge_result(run_id, problem_id, result, submission_sid, metadata)
+            logger.info(
+                "Judge result for run %s problem %s (sid=%s): %s",
+                run_id,
+                problem_id,
+                submission_sid,
+                result,
+            )
+        except ProblemNotFoundError:
+            update_judge_result(run_id, problem_id, "Problem Not Found", None, None)
+            logger.warning("Problem %s not found for run %s", problem_id, run_id)
+        except TimeoutError as exc:
+            update_judge_result(
+                run_id,
+                problem_id,
+                "Judge Timeout",
+                None,
+                {"error": str(exc)},
+            )
+            logger.error("Judge timeout for run %s problem %s: %s", run_id, problem_id, exc)
+        except Exception as exc:  # noqa: BLE001
+            update_judge_result(
+                run_id,
+                problem_id,
+                "Judge Failed",
+                None,
+                {"error": str(exc)},
+            )
+            logger.exception(
+                "Judge failed for run %s problem %s", run_id, problem_id
+            )
+
+
 def update_judge_result(run_id: str, problem_id: str, result: str, submission_sid: int | None, metadata: dict | None):
     conn = get_db_connection()
     meta_json = json.dumps(metadata) if metadata else None
@@ -303,7 +415,7 @@ def wait_for_result(judge: LightCPVerifierJudge, submission_id: int, timeout_sec
     raise TimeoutError("Judge response timed out")
 
 
-def grade_user_submissions(run_id: str, user_identifier: str):
+def grade_user_submissions(run_id: str, user_identifier: str, judge: LightCPVerifierJudge | None = None):
     rows = fetch_submissions_for_run(run_id)
     if not rows:
         return
@@ -312,61 +424,13 @@ def grade_user_submissions(run_id: str, user_identifier: str):
         "Starting grading for run_id=%s user=%s (%d problems)", run_id, user_identifier, len(rows)
     )
 
-    def mark_no_submission(problem_id: str):
-        update_judge_result(run_id, problem_id, "No Submission", None, None)
-        logger.info("Run %s problem %s had no submission; skipping judge", run_id, problem_id)
-
-    try:
-        with LightCPVerifierJudge(worker=app.config["JUDGE_WORKERS"]) as judge:
-            for row in rows:
-                problem_id = row["problem_id"]
-                solution = row["solution"] or ""
-                if not solution.strip():
-                    mark_no_submission(problem_id)
-                    continue
-
-                try:
-                    submission_sid = judge.submit(problem_id, SupportedLanguage.CPP, solution)
-                    result = wait_for_result(judge, submission_sid)
-                    metadata = {"graded_at": time.time()}
-                    update_judge_result(run_id, problem_id, result, submission_sid, metadata)
-                    logger.info(
-                        "Judge result for run %s problem %s (sid=%s): %s",
-                        run_id,
-                        problem_id,
-                        submission_sid,
-                        result,
-                    )
-                except ProblemNotFoundError:
-                    update_judge_result(run_id, problem_id, "Problem Not Found", None, None)
-                    logger.warning("Problem %s not found for run %s", problem_id, run_id)
-                except TimeoutError as exc:
-                    update_judge_result(
-                        run_id,
-                        problem_id,
-                        "Judge Timeout",
-                        None,
-                        {"error": str(exc)},
-                    )
-                    logger.error("Judge timeout for run %s problem %s: %s", run_id, problem_id, exc)
-                except Exception as exc:  # noqa: BLE001
-                    update_judge_result(
-                        run_id,
-                        problem_id,
-                        "Judge Failed",
-                        None,
-                        {"error": str(exc)},
-                    )
-                    logger.exception(
-                        "Judge failed for run %s problem %s", run_id, problem_id
-                    )
-    except Exception as exc:  # noqa: BLE001
+    def handle_unavailable(exc: Exception):
         logger.exception("Judge service unavailable for run %s: %s", run_id, exc)
         for row in rows:
             problem_id = row["problem_id"]
             solution = row["solution"] or ""
             if not solution.strip():
-                mark_no_submission(problem_id)
+                update_judge_result(run_id, problem_id, "No Submission", None, None)
                 continue
             update_judge_result(
                 run_id,
@@ -380,6 +444,17 @@ def grade_user_submissions(run_id: str, user_identifier: str):
                 run_id,
                 problem_id,
             )
+
+    try:
+        if judge is None:
+            with LightCPVerifierJudge(worker=app.config["JUDGE_WORKERS"]) as owned_judge:
+                _grade_rows_with_judge(owned_judge, run_id, user_identifier, rows)
+        else:
+            _grade_rows_with_judge(judge, run_id, user_identifier, rows)
+    except Exception as exc:  # noqa: BLE001
+        handle_unavailable(exc)
+        if judge is not None:
+            raise
 
 
 def start_grading_async(run_id: str, user_identifier: str) -> bool:
@@ -492,11 +567,16 @@ def problem_page(index: int):
         save_solution(run_id, user_identifier, problem_id, solution)
         next_index = index + 1
         if next_index >= len(problem_ids):
-            started = start_grading_async(run_id, user_identifier)
-            if started:
-                flash("Grading in progress. The results page will update shortly.")
+            if results_disabled():
+                flash(
+                    "Thank you for participating! Your answers are saved, and you can still edit them before final review."
+                )
             else:
-                flash("Grading already running. Check the results page for updates.")
+                started = start_grading_async(run_id, user_identifier)
+                if started:
+                    flash("Grading in progress. The results page will update shortly.")
+                else:
+                    flash("Grading already running. Check the results page for updates.")
             return redirect(url_for("results"))
         return redirect(url_for("problem_page", index=next_index))
 
@@ -507,6 +587,7 @@ def problem_page(index: int):
         index=index,
         total=len(problem_ids),
         saved_solution=saved_solution,
+        results_disabled=results_disabled(),
     )
 
 
@@ -517,7 +598,32 @@ def results():
         flash("Session expired. Start again.")
         return redirect(url_for("index"))
 
-    run_id, user_identifier, _ = context
+    run_id, user_identifier, problem_ids = context
+
+    if results_disabled():
+        submissions = fetch_submissions_for_run(run_id)
+        submission_map = {row["problem_id"]: row for row in submissions}
+        review_rows = []
+        for idx, pid in enumerate(problem_ids):
+            row = submission_map.get(pid)
+            review_rows.append(
+                {
+                    "index": idx,
+                    "problem_id": pid,
+                    "title": row["title"] if row else pid,
+                    "difficulty": (row["difficulty"] or "").capitalize() if row else "Unknown",
+                    "has_solution": bool(row and (row["solution"] or "").strip()),
+                }
+            )
+        completed = sum(1 for entry in review_rows if entry["has_solution"])
+        return render_template(
+            "review.html",
+            problems=review_rows,
+            user_identifier=user_identifier,
+            completed=completed,
+            total=len(review_rows),
+        )
+
     submissions = fetch_submissions_for_run(run_id)
     pending_count = sum(1 for row in submissions if not row["judge_result"])
     has_saved_code = any((row["solution"] or "").strip() for row in submissions)
@@ -544,6 +650,59 @@ def results():
         has_saved_code=has_saved_code,
         auto_refresh=auto_refresh,
     )
+
+
+@app.cli.command("grade-run")
+@click.argument("run_id")
+def grade_run_cli(run_id: str):
+    """Grade a stored run using the local LightCPVerifier instance."""
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT user_identifier FROM users WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        click.echo(f"No run found for run_id={run_id}.")
+        return
+
+    user_identifier = row["user_identifier"]
+    click.echo(f"Grading run {run_id} for user {user_identifier}...")
+    grade_user_submissions(run_id, user_identifier)
+    click.echo("Done.")
+
+
+@app.cli.command("grade-all")
+@click.option(
+    "--only-missing",
+    is_flag=True,
+    help="Skip runs that already have judge results for every problem.",
+)
+def grade_all_cli(only_missing: bool):
+    """Grade every stored run (optionally only those with pending submissions)."""
+    runs = list_all_runs()
+    if not runs:
+        click.echo("No runs found in the database.")
+        return
+
+    click.echo(f"Found {len(runs)} runs. Starting judge...")
+    graded = 0
+    skipped = 0
+    with LightCPVerifierJudge(worker=app.config["JUDGE_WORKERS"]) as judge:
+        for row in runs:
+            run_id = row["run_id"]
+            user_identifier = row["user_identifier"]
+            if only_missing and pending_submission_count(run_id) == 0:
+                skipped += 1
+                continue
+
+            click.echo(f"Grading run {run_id} ({user_identifier})...")
+            try:
+                grade_user_submissions(run_id, user_identifier, judge=judge)
+                graded += 1
+            except Exception as exc:  # noqa: BLE001
+                click.echo(f"Failed to grade run {run_id}: {exc}", err=True)
+    click.echo(f"Graded {graded} run(s). Skipped {skipped} run(s).")
 
 
 if __name__ == "__main__":
