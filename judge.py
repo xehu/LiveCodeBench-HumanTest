@@ -91,6 +91,10 @@ class LightCPVerifierJudge(Judge):
             environment={
                 "JUDGE_WORKERS": str(self.worker),
                 "GJ_PARALLELISM": str(self.worker),
+                # Enable live judging mode in the LightCPVerifier server so
+                # /submit returns a submission id (sid) and /result/:sid is
+                # available for synchronous grading.
+                "ENABLE_LIVE_JUDGE": "true",
             },
             volumes=[
                 f"{self.PROBLEMS_DIR}:/app/problems",
@@ -165,9 +169,25 @@ class LightCPVerifierJudge(Judge):
             }
         )
         if response.status_code != 200:
-            print(response.text)
+            logger.warning("Judge /submit returned non-200: %s", response.text)
         response.raise_for_status()
-        return response.json()["sid"]
+
+        # Newer versions of the LightCPVerifier API return a JSON receipt
+        # object; when live judging is enabled, this includes a numeric sid
+        # that we can poll via /result/:sid. Be defensive about the shape of
+        # the response so we fail with a clear error instead of KeyError.
+        try:
+            payload = response.json()
+        except ValueError:
+            logger.error("Judge /submit did not return JSON: %s", response.text)
+            raise RuntimeError("Judge submit failed: non-JSON response from judge service")
+
+        sid = payload.get("sid") if isinstance(payload, dict) else None
+        if not isinstance(sid, int):
+            logger.error("Judge /submit JSON missing 'sid': %s", payload)
+            raise RuntimeError("Judge submit failed: response missing 'sid' (is live judging disabled?)")
+
+        return sid
 
     def get_result(self, submission_id: int) -> str:
         response = requests.get(f"{self.base_url}/result/{submission_id}")

@@ -197,18 +197,27 @@ This workflow lets you keep production traffic judge-free while still gathering 
 
 ### One-Command Sync + Grade Helper
 
-To make the entire workflow a single command, use the helper script:
+To make the entire workflow a single command, use the helper script. For your current
+Elastic Beanstalk environment (`cpp-activity-portal-20251208`), you can simply run:
 
 ```bash
-python scripts/sync_and_grade.py --eb-env <ElasticBeanstalkEnvName> \
-        --remote-path /var/app/current/app.db \
-        --local-path ./prod-app.db \
-        --only-missing
+python scripts/sync_and_grade.py --eb-env cpp-activity-portal-20251208 --only-missing
 ```
 
-- Requires the Elastic Beanstalk CLI (`eb`) to be configured locally.
-- The script runs `eb scp` to download the SQLite file, sets `APP_DATABASE_PATH`/`APP_ENV` for you, launches the local LightCPVerifier judge once via `flask --app app grade-all`, and writes verdicts back into the copied database.
-- Omit `--only-missing` to force regrading of every stored run. Use `--instance-number N` if your EB environment has multiple EC2 instances and you need a specific one.
+This will:
+
+- Use the EB CLI (`eb`) to SSH into the environment and stream `/var/app/current/app.db` to `./prod-app.db` (you can override paths via `--remote-path` / `--local-path` if needed).
+- Set `APP_DATABASE_PATH` and `APP_ENV=local` for the grading process.
+- Start a single local LightCPVerifier judge container and run `flask --app app grade-all` (with `--only-missing` so that only runs without verdicts are graded).
+
+A more generic form, if you use a different EB environment name, is:
+
+```bash
+python scripts/sync_and_grade.py --eb-env <YourElasticBeanstalkEnvName> --only-missing
+```
+
+- Omit `--only-missing` to force regrading of every stored run.
+- Use `--instance-number N` if your EB environment has multiple EC2 instances and you need a specific one.
 
 ## Understanding the Codebase
 

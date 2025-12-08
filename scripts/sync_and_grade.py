@@ -21,12 +21,22 @@ def run_command(cmd: list[str], *, env: dict[str, str] | None = None):
 
 def sync_database(env_name: str, remote_path: str, local_path: Path, instance_number: int | None):
     local_path.parent.mkdir(parents=True, exist_ok=True)
+    # On the Docker-based Elastic Beanstalk platform, the Flask app runs
+    # inside a container and writes its SQLite database inside the
+    # container filesystem (default: /app/app.db). Reading
+    # /var/app/current/app.db on the host only shows the bundled source
+    # file, not the live DB. Instead, exec into the running container and
+    # stream the DB file from there.
+    remote_cmd = (
+        "sudo docker exec $(sudo docker ps --format '{{.ID}}' | head -n1) "
+        f"cat {remote_path}"
+    )
     ssh_cmd = [
         "eb",
         "ssh",
         env_name,
         "--command",
-        f"sudo cat {remote_path}",
+        remote_cmd,
     ]
     if instance_number is not None:
         ssh_cmd.extend(["-n", str(instance_number)])
@@ -50,8 +60,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eb-env", required=True, help="Elastic Beanstalk environment name (e.g., livecodebench-prod)")
     parser.add_argument(
         "--remote-path",
-        default="/var/app/current/app.db",
-        help="Path to the SQLite file on the EB instance (default: /var/app/current/app.db)",
+        default="/app/app.db",
+        help="Path to the SQLite file inside the Docker container (default: /app/app.db)",
     )
     parser.add_argument(
         "--local-path",
